@@ -2,53 +2,92 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
+const root = new URL("../", import.meta.url);
+const read = path => readFile(new URL(path, root), "utf8");
 
-  return worker.fetch(
-    new Request("http://localhost/", { headers: { accept: "text/html" } }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
-    { waitUntil() {}, passThroughOnException() {} },
-  );
-}
+test("ships the Atlas product and social metadata", async () => {
+  const [atlas, page, layout, css, packageJson] = await Promise.all([
+    read("app/paper-atlas.tsx"),
+    read("app/page.tsx"),
+    read("app/layout.tsx"),
+    read("app/atlas.css"),
+    read("package.json"),
+  ]);
 
-test("server-renders Paper Wind Tunnel with social metadata", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
-  assert.match(html, /<title>Paper Wind Tunnel · ICML 2026<\/title>/i);
-  assert.match(html, /PAPER/);
-  assert.match(html, /WIND TUNNEL/);
-  assert.match(html, /LatentMAS/);
-  assert.match(html, /ThinkPRM/);
-  assert.match(html, /PaperBanana/);
-  assert.match(html, /Pixel MeanFlow/);
-  assert.match(html, /property="og:image" content="http:\/\/localhost(?::3000)?\/og\.png"/i);
-  assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
+  assert.match(layout, /ICML 2026 Paper Atlas/);
+  assert.match(layout, /og\.png/);
+  assert.match(page, /PaperAtlas/);
+  assert.match(atlas, /ICML 2026 PAPER ATLAS/);
+  assert.match(atlas, /SEMANTIC TOPOGRAPHIC MAP OF 6,628 PAPERS/);
+  for (const label of ["LANDSCAPE", "ATTENTION", "GITHUB", "RANKINGS", "MATRIX"]) {
+    assert.match(atlas, new RegExp(label));
+  }
+  assert.match(css, /prefers-reduced-motion/);
+  assert.doesNotMatch(atlas, /OPEN PLAYABLE PAPER|ATTENTION NOW/);
+  assert.doesNotMatch(packageJson, /vinext|wrangler|drizzle|cloudflare/i);
 });
 
 test("keeps evidence, interaction, and source boundaries explicit", async () => {
-  const [component, page, layout, css, packageJson] = await Promise.all([
-    readFile(new URL("../app/paper-wind-tunnel.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
+  const [atlas, detailRoute, dataText, buildScript] = await Promise.all([
+    read("app/paper-atlas.tsx"),
+    read("app/api/papers/[uid]/route.ts"),
+    read("public/icml-map.json"),
+    read("scripts/build-atlas-layout.mjs"),
   ]);
 
-  for (const label of ["问题", "招式", "证据", "边界"]) assert.match(component, new RegExp(label));
-  for (const id of ["2511.20639", "2504.16828", "2601.23265", "2601.22158"]) assert.match(component, new RegExp(id));
-  assert.match(component, /type="range"/);
-  assert.match(component, /原文证据层/);
-  assert.match(component, /不把滑杆状态伪装成实验测量/);
-  assert.match(layout, /og\.png/);
-  assert.match(page, /PaperWindTunnel/);
-  assert.match(css, /prefers-reduced-motion/);
-  assert.doesNotMatch(component, /api\.alphaxiv\.org|alphaxiv.*summary/i);
-  assert.doesNotMatch(packageJson, /react-loading-skeleton/);
-  await access(new URL("../public/og.png", import.meta.url));
+  const map = JSON.parse(dataText);
+  assert.equal(map.points.length, 6628);
+  assert.equal(new Set(map.points.map(point => point.uid ?? point.url)).size, 6628);
+  assert.deepEqual(
+    map.visualTopics.map(topic => topic.label),
+    ["Agents", "Reasoning", "Multimodal & Generative", "Robotics", "RL", "Theory & Causality", "Efficiency & Systems", "Science & Applications"],
+  );
+  assert.equal(map.visualTopics.reduce((total, topic) => total + topic.count, 0), 6628);
+  assert.ok(map.topicTiers[0].length >= 8);
+  assert.ok(map.keywords.length > 100);
+  assert.ok(map.subtopics.length >= 24);
+  assert.equal(map.taxonomyVersion, "2026-07-embedding-v4");
+  assert.equal(map.embeddingModel, "Xenova/all-MiniLM-L6-v2");
+  assert.ok(map.embeddingRevision);
+
+  assert.ok(map.points.every(point =>
+    Number.isFinite(point.vx)
+    && Number.isFinite(point.vy)
+    && Number.isInteger(point.vc)
+    && Number.isInteger(point.macroTopicId)
+    && point.subtopicId
+    && typeof point.labelPriority === "number"
+    && typeof point.representativeScore === "number"
+    && typeof point.macroTopicConfidence === "number"
+    && Array.isArray(point.taxonomyAuditFlags)
+    && point.semanticNeighbors?.length === 12
+  ));
+  assert.ok(map.points.some(point => point.attentionAvailable && point.visits7d > 0));
+  assert.ok(map.points.some(point => point.githubStars > 0 && point.githubUrl));
+  assert.ok(map.points.some(point => point.b.length > 300));
+
+  assert.match(atlas, /const MAX_ZOOM = 10/);
+  assert.match(atlas, /RELATION_WEIGHTS = \{ semantic: \.55, method: \.25, task: \.20 \}/);
+  assert.match(atlas, /RELATION_LIMIT = 10/);
+  assert.match(atlas, /DISCOVERY SIGNAL/);
+  assert.match(atlas, /ranking-stack/);
+  assert.match(atlas, /focusScaleRef\.current = Math\.max\(view\.scale, 1\.45\)/);
+  assert.match(atlas, /BACK TO OVERVIEW/);
+  assert.match(atlas, /SHOW FULL ABSTRACT/);
+  assert.match(atlas, /useState\(true\)/);
+  assert.match(atlas, /\/api\/papers\//);
+  assert.match(atlas, /ATTENTION · NOT QUALITY/);
+  assert.doesNotMatch(atlas, /api\.alphaxiv\.org/i);
+
+  assert.match(buildScript, /Xenova\/all-MiniLM-L6-v2/);
+  assert.match(buildScript, /nNeighbors: Math\.min\(20/);
+  assert.match(buildScript, /minDist: \.12/);
+  assert.match(buildScript, /semanticNeighbors/);
+  assert.doesNotMatch(buildScript, /2511\.20639|LatentMAS/);
+  assert.match(detailRoute, /api\.alphaxiv\.org\/papers\/v3/);
+  assert.match(detailRoute, /params: Promise/);
+
+  for (const asset of ["public/og.png", "public/atlas-logo.png", "public/icml-map.json"]) {
+    await access(new URL(asset, root));
+  }
 });

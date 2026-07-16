@@ -8,6 +8,7 @@ import {
   CaretRight,
   CaretUp,
   Code,
+  GithubLogo,
   MapTrifold,
   MagnifyingGlass,
   Minus,
@@ -78,6 +79,7 @@ type Relationship = {
   reason: string;
 };
 type DiscoverySignal = { visits: number; votes: number; stars: number; score: number; coverage: number };
+type ConnectedNode = Relationship & { x: number; y: number; ring: "closest" | "bridge"; order: number };
 
 const CLUSTER_COLORS = [
   "#356df1",
@@ -94,6 +96,11 @@ const MAX_ZOOM = 10;
 const RELATION_THRESHOLD = .18;
 const RELATION_LIMIT = 10;
 const RELATION_WEIGHTS = { semantic: .55, method: .25, task: .20 } as const;
+const REPOSITORY_URL = "https://github.com/MisterBrookT/icml-2026-paper-atlas";
+const CONNECTED_POSITIONS = {
+  closest: [{ x: 50, y: 14 }, { x: 79, y: 43 }, { x: 50, y: 79 }, { x: 21, y: 43 }],
+  bridge: [{ x: 14, y: 14 }, { x: 86, y: 14 }, { x: 86, y: 78 }, { x: 14, y: 78 }],
+} as const;
 
 const SPOTLIGHTS: Record<string, {
   label: string;
@@ -253,6 +260,112 @@ function AtlasLogo() {
   return <Image className="atlas-logo" src="/atlas-logo.png" width={40} height={34} alt="" priority unoptimized />;
 }
 
+function ConnectedView({
+  data,
+  selected,
+  selectedIndex,
+  relationships,
+  contribution,
+  topic,
+  subtopic,
+  highlighted,
+  historyCount,
+  onBack,
+  onExit,
+  onSelect,
+  onHighlight,
+}: {
+  data: MapData;
+  selected: MapPoint;
+  selectedIndex: number;
+  relationships: Relationship[];
+  contribution: string;
+  topic?: VisualTopic;
+  subtopic?: Subtopic;
+  highlighted: number | null;
+  historyCount: number;
+  onBack: () => void;
+  onExit: () => void;
+  onSelect: (index: number) => void;
+  onHighlight: (index: number | null) => void;
+}) {
+  const selectedTopicIndex = selected.macroTopicId ?? selected.vc ?? selected.c;
+  const closest = relationships.slice(0, 4);
+  const closestIndexes = new Set(closest.map(item => item.index));
+  const bridgePool = relationships.filter(item => !closestIndexes.has(item.index));
+  const crossTopic = bridgePool.filter(item => {
+    const point = data.points[item.index];
+    return (point.macroTopicId ?? point.vc ?? point.c) !== selectedTopicIndex;
+  });
+  const bridge = [...crossTopic, ...bridgePool.filter(item => !crossTopic.includes(item))].slice(0, 4);
+  const nodes: ConnectedNode[] = [
+    ...closest.map((item, order) => ({ ...item, ...CONNECTED_POSITIONS.closest[order], ring: "closest" as const, order })),
+    ...bridge.map((item, order) => ({ ...item, ...CONNECTED_POSITIONS.bridge[order], ring: "bridge" as const, order })),
+  ];
+
+  return <div
+    className="connected-view"
+    onPointerDown={event => event.stopPropagation()}
+    onPointerUp={event => event.stopPropagation()}
+    onClick={event => { if (event.target === event.currentTarget) onExit(); }}
+  >
+    <div className="connected-toolbar">
+      <button onClick={historyCount ? onBack : onExit}><ArrowLeft size={15} /> {historyCount ? "PREVIOUS PAPER" : "BACK TO ATLAS"}</button>
+      <span>CONNECTED VIEW <b>PAPER {(selectedIndex + 1).toLocaleString()} · {nodes.length} LINKS</b></span>
+      <button onClick={onExit}>OVERVIEW <kbd>ESC</kbd></button>
+    </div>
+    <div className="connected-breadcrumb"><span>ATLAS</span><i />{topic && <><span style={{ color: CLUSTER_COLORS[selectedTopicIndex] }}>{topic.label.toUpperCase()}</span><i /></>}{subtopic && <span>{subtopic.label.toUpperCase()}</span>}</div>
+    <div className="connected-legend"><span><i className="closest" />CLOSEST</span><span><i className="bridge" />CROSS-TOPIC BRIDGE</span><small>LINE WEIGHT = COMBINED RELATION</small></div>
+    <svg className="connected-lines" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true">
+      {nodes.map(node => {
+        const point = data.points[node.index];
+        const color = CLUSTER_COLORS[point.macroTopicId ?? point.vc ?? point.c];
+        const endX = node.x * 10, endY = node.y * 7;
+        const controlX = 500 + (endX - 500) * .48;
+        const controlY = 350 + (endY - 350) * .22 + (node.order - 1.5) * 8;
+        return <path
+          key={point.uid ?? `${point.t}-${node.index}`}
+          d={`M 500 350 Q ${controlX} ${controlY} ${endX} ${endY}`}
+          stroke={color}
+          strokeWidth={highlighted === node.index ? 5 : 1.2 + node.score * 4.2}
+          opacity={highlighted === null || highlighted === node.index ? (node.ring === "closest" ? .78 : .48) : .16}
+        />;
+      })}
+    </svg>
+
+    <article className="connected-hero" style={{ "--topic-color": CLUSTER_COLORS[selectedTopicIndex] } as React.CSSProperties}>
+      <div><span>CENTER PAPER</span><b>{Math.round((selected.attentionPercentile ?? 0) * 100)}<small>ATTN PCTL</small></b></div>
+      <h2>{selected.t}</h2>
+      <p>{contribution}</p>
+      <footer>
+        <span>{topic?.label ?? "ICML 2026"}</span>
+        {selected.methodTags?.[0] && <span>{selected.methodTags[0]}</span>}
+        {selected.githubStars != null && <span>GH {selected.githubStars.toLocaleString()}</span>}
+      </footer>
+    </article>
+
+    {nodes.map(node => {
+      const point = data.points[node.index];
+      const topicIndex = point.macroTopicId ?? point.vc ?? point.c;
+      return <button
+        className={`connected-node connected-node-${node.ring} ${highlighted === node.index ? "is-highlighted" : ""}`}
+        key={point.uid ?? `${point.t}-${node.index}`}
+        style={{ left: `${node.x}%`, top: `${node.y}%`, "--node-color": CLUSTER_COLORS[topicIndex] } as React.CSSProperties}
+        onMouseEnter={() => onHighlight(node.index)}
+        onMouseLeave={() => onHighlight(null)}
+        onFocus={() => onHighlight(node.index)}
+        onBlur={() => onHighlight(null)}
+        onClick={() => onSelect(node.index)}
+      >
+        <span><i />{node.ring === "closest" ? `CLOSEST ${node.order + 1}` : `BRIDGE ${node.order + 1}`}<b>{Math.round(node.score * 100)}</b></span>
+        <strong>{point.t}</strong>
+        <em>{node.reason}</em>
+        <small>{data.visualTopics[topicIndex]?.label ?? "ICML 2026"}</small>
+      </button>;
+    })}
+  </div>;
+}
+
 function Filters({ data, topic, method, task, onTopic, onMethod, onTask }: {
   data: MapData; topic: string; method: string; task: string;
   onTopic: (value: string) => void; onMethod: (value: string) => void; onTask: (value: string) => void;
@@ -345,6 +458,7 @@ export function PaperAtlas() {
   const [mapMode, setMapMode] = useState<MapMode>("pulse");
   const [guideVisible, setGuideVisible] = useState(true);
   const [focused, setFocused] = useState(false);
+  const [connectionHistory, setConnectionHistory] = useState<number[]>([]);
   const [highlightedNeighbor, setHighlightedNeighbor] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<View>({ scale: 1, x: 0, y: 0 });
@@ -360,8 +474,6 @@ export function PaperAtlas() {
   const detailRequestRef = useRef<string | null>(null);
   const dragRef = useRef<{ x: number; y: number; startX: number; startY: number; viewX: number; viewY: number; moved: boolean } | null>(null);
   const animationRef = useRef<number | null>(null);
-  const focusScaleRef = useRef(1.45);
-  const focusPositionedWidthRef = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -440,17 +552,6 @@ export function PaperAtlas() {
     animationRef.current = requestAnimationFrame(tick);
   }, [view]);
 
-  const focusTarget = useCallback((point: MapPoint, scale = focusScaleRef.current) => {
-    const pad = 18;
-    const rawX = pad + (point.vx ?? point.x) * (size.width - pad * 2);
-    const rawY = pad + (point.vy ?? point.y) * (size.height - pad * 2);
-    return {
-      scale,
-      x: size.width * .42 - (size.width / 2 + (rawX - size.width / 2) * scale),
-      y: size.height * .50 - (size.height / 2 + (rawY - size.height / 2) * scale),
-    };
-  }, [size]);
-
   const relationships = useMemo(() => {
     if (!data || selectedIndex === null) return [];
     return rankRelationships(data.points, selectedIndex);
@@ -521,6 +622,7 @@ export function PaperAtlas() {
     if (!ctx) return;
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, size.width, size.height);
+    if (focused) return;
 
     data.visualTopics.forEach((topic, cluster) => {
       ctx.save();
@@ -786,9 +888,9 @@ export function PaperAtlas() {
     setSelectedIndex(null);
     setHighlightedNeighbor(null);
     setAbstractExpanded(true);
+    setConnectionHistory([]);
     animateView(preFocusView ?? { scale: 1, x: 0, y: 0 });
     setPreFocusView(null);
-    focusPositionedWidthRef.current = null;
   }, [animateView, preFocusView]);
 
   const resetView = useCallback(() => {
@@ -806,12 +908,12 @@ export function PaperAtlas() {
 
       const centerX = size.width / 2;
       const centerY = size.height / 2;
-      const targetX = focused ? size.width * .42 : centerX;
+      const targetX = centerX;
       const pad = 18;
-      let anchor = focused && selectedIndex !== null ? data.points[selectedIndex] : data.points[0];
+      let anchor = data.points[0];
       let nearestDistance = Number.POSITIVE_INFINITY;
 
-      for (const point of focused && selectedIndex !== null ? [] : data.points) {
+      for (const point of data.points) {
         const visualX = point.vx ?? point.x;
         const visualY = point.vy ?? point.y;
         const rawX = pad + visualX * (size.width - pad * 2);
@@ -833,17 +935,17 @@ export function PaperAtlas() {
         y: -(anchorY - centerY) * scale,
       };
     });
-  }, [data, focused, selectedIndex, size]);
+  }, [data, size]);
 
-  const selectPoint = useCallback((index: number) => {
+  const selectPoint = useCallback((index: number, options?: { recordHistory?: boolean }) => {
     if (!data || index < 0 || index >= data.points.length) return;
-    if (focused && selectedIndex === index) {
-      exitFocus();
-      return;
+    if (focused && selectedIndex === index) return;
+    if (!focused) {
+      setPreFocusView(view);
+      setConnectionHistory([]);
+    } else if (selectedIndex !== null && options?.recordHistory !== false) {
+      setConnectionHistory(current => [...current, selectedIndex].slice(-12));
     }
-    if (!focused) setPreFocusView(view);
-    focusScaleRef.current = Math.max(view.scale, 1.45);
-    focusPositionedWidthRef.current = size.width;
     const uid = data.points[index].uid;
     setSurface("atlas");
     setSelectedIndex(index);
@@ -852,14 +954,17 @@ export function PaperAtlas() {
     setAbstractExpanded(true);
     setDetailLoading(Boolean(uid && !paperDetailCache[uid]));
     setDetailError(false);
-    animateView(focusTarget(data.points[index], focusScaleRef.current));
-  }, [animateView, data, exitFocus, focusTarget, focused, paperDetailCache, selectedIndex, size.width, view]);
+  }, [data, focused, paperDetailCache, selectedIndex, view]);
 
-  useEffect(() => {
-    if (!focused || !data || selectedIndex === null || focusPositionedWidthRef.current === size.width) return;
-    focusPositionedWidthRef.current = size.width;
-    animateView(focusTarget(data.points[selectedIndex], focusScaleRef.current));
-  }, [animateView, data, focusTarget, focused, selectedIndex, size.width]);
+  const goBackConnection = useCallback(() => {
+    const previous = connectionHistory.at(-1);
+    if (previous == null) {
+      exitFocus();
+      return;
+    }
+    setConnectionHistory(current => current.slice(0, -1));
+    selectPoint(previous, { recordHistory: false });
+  }, [connectionHistory, exitFocus, selectPoint]);
 
   useEffect(() => {
     if (!focused) return;
@@ -893,6 +998,7 @@ export function PaperAtlas() {
             <button className={surface === "atlas" ? "active" : ""} onClick={() => setSurface("atlas")}><MapTrifold size={16} />ATLAS</button>
             <button className={surface === "rankings" ? "active" : ""} onClick={() => setSurface("rankings")}><Pulse size={16} />RANKINGS</button>
             <button className={surface === "matrix" ? "active" : ""} onClick={() => setSurface("matrix")}><SquaresFour size={16} />MATRIX</button>
+            <a href={REPOSITORY_URL} target="_blank" rel="noreferrer" aria-label="Open source repository on GitHub"><GithubLogo size={16} />GITHUB</a>
           </div>
         </div>
         <div className="atlas-status"><i /><span>UPDATED 2026-07-15<strong>{data ? data.points.length.toLocaleString() : "N/A"} PAPERS</strong></span></div>
@@ -903,10 +1009,12 @@ export function PaperAtlas() {
           className="atlas-map"
           ref={mapRef}
           onPointerDown={event => {
+            if (focused) return;
             dragRef.current = { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, viewX: view.x, viewY: view.y, moved: false };
             event.currentTarget.setPointerCapture(event.pointerId);
           }}
           onPointerMove={event => {
+            if (focused) return;
             const drag = dragRef.current;
             if (drag) {
               const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
@@ -917,15 +1025,19 @@ export function PaperAtlas() {
           }}
           onPointerLeave={() => { dragRef.current = null; setHovered(null); }}
           onPointerUp={event => {
+            if (focused) {
+              exitFocus();
+              return;
+            }
             const drag = dragRef.current;
             if (drag && !drag.moved) {
               const closest = closestPoint(event.clientX, event.clientY);
               if (closest) selectPoint(closest.index);
-              else if (focused) exitFocus();
             }
             dragRef.current = null;
           }}
           onWheel={event => {
+            if (focused) return;
             event.preventDefault();
             const delta = event.deltaY > 0 ? .88 : 1.13;
             const rect = event.currentTarget.getBoundingClientRect();
@@ -943,6 +1055,21 @@ export function PaperAtlas() {
           }}
         >
           <canvas ref={canvasRef} aria-label="ICML 2026 论文语义地图" />
+          {focused && selected && data && selectedIndex !== null && <ConnectedView
+            data={data}
+            selected={selected}
+            selectedIndex={selectedIndex}
+            relationships={relationships}
+            contribution={contribution}
+            topic={selectedTopic ?? undefined}
+            subtopic={selectedSubtopic ?? undefined}
+            highlighted={highlightedNeighbor}
+            historyCount={connectionHistory.length}
+            onBack={goBackConnection}
+            onExit={exitFocus}
+            onSelect={selectPoint}
+            onHighlight={setHighlightedNeighbor}
+          />}
           {!data && !loadError && <div className="map-loading"><Sparkle size={20} />ASSEMBLING 6,628 PAPERS…</div>}
           {loadError && <div className="map-loading error">MAP DATA UNAVAILABLE</div>}
           {hovered && hoveredPaper && (
@@ -954,33 +1081,31 @@ export function PaperAtlas() {
             </div>
           )}
 
-          {focused && <button className="focus-exit" onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()} onClick={exitFocus}><ArrowLeft size={15} /> BACK TO OVERVIEW <kbd>ESC</kbd></button>}
-
-          <div className="zoom-control" onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}>
+          {!focused && <div className="zoom-control" onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}>
             <button onClick={() => zoomAroundVisiblePaper(1.25)} aria-label="放大"><Plus size={15} /></button>
             <span>{view.scale.toFixed(2)}×</span>
             <button onClick={() => zoomAroundVisiblePaper(1 / 1.25)} aria-label="缩小"><Minus size={15} /></button>
-            <button onClick={resetView} aria-label={focused ? "退出聚焦" : "重置视图"}><SquaresFour size={15} /></button>
-          </div>
+            <button onClick={resetView} aria-label="重置视图"><SquaresFour size={15} /></button>
+          </div>}
 
-          <div className="map-mode-switch" onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}>
+          {!focused && <div className="map-mode-switch" onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}>
             <span>COLOR ALWAYS = MACRO TOPIC</span>
             <div>
               <button className={mapMode === "landscape" ? "active" : ""} onClick={() => setMapMode("landscape")}><strong>LANDSCAPE</strong><small>EQUAL DOTS</small></button>
               <button className={mapMode === "pulse" ? "active" : ""} onClick={() => setMapMode("pulse")}><strong>7-DAY HEAT</strong><small>SIZE = VISITS</small></button>
               <button className={mapMode === "code" ? "active" : ""} onClick={() => setMapMode("code")}><strong>GITHUB</strong><small>RING = STARS</small></button>
             </div>
-          </div>
-          {guideVisible ? <aside className={`map-reading-guide guide-${mapMode}`} onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}>
+          </div>}
+          {!focused && (guideVisible ? <aside className={`map-reading-guide guide-${mapMode}`} onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}>
             <button className="guide-close" onClick={() => setGuideVisible(false)} aria-label="关闭地图说明"><X size={13} /></button>
             <div><span>HOW TO READ</span><strong>{mapMode === "landscape" ? "SEMANTIC LANDSCAPE" : mapMode === "pulse" ? "CURRENT ATTENTION" : "OPEN-SOURCE ADOPTION"}</strong></div>
             {mapMode === "landscape" && <p><i className="guide-dot equal" />One dot = one paper. Equal size. Nearby papers are semantically similar. Color = Macro Topic.</p>}
             {mapMode === "pulse" && <><p><span className="guide-dots"><i className="guide-dot small" /><i className="guide-dot large" /></span>Larger dot = more alphaXiv visits during last 7 days. Hollow dot = missing visit data.</p><button onClick={() => setSurface("rankings")}>VIEW DISCOVERY RANKING</button></>}
             {mapMode === "code" && <><p><span className="guide-code-symbol"><i className="guide-dot equal" /><i /></span>Center dot = paper. Outer ring = repository Stars. Larger ring means more Stars. Hollow dot = no repository.</p><button onClick={() => setSurface("rankings")}>VIEW DISCOVERY RANKING</button></>}
             <small>Attention and Stars are signals, not paper quality or citations.</small>
-          </aside> : <button className="map-guide-open" onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()} onClick={() => setGuideVisible(true)}><Question size={14} /> HOW TO READ</button>}
-          <div className="density-legend"><span>DENSITY</span>{[.25,.38,.52,.68,.82,1].map(value => <i key={value} style={{ opacity: value }} />)}<small>LOW</small><small>HIGH</small></div>
-          <div className="semantic-scale"><span>0</span><span>250</span><span>500</span><span>750</span><i /><small>µ-semantic units</small></div>
+          </aside> : <button className="map-guide-open" onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()} onClick={() => setGuideVisible(true)}><Question size={14} /> HOW TO READ</button>)}
+          {!focused && <div className="density-legend"><span>DENSITY</span>{[.25,.38,.52,.68,.82,1].map(value => <i key={value} style={{ opacity: value }} />)}<small>LOW</small><small>HIGH</small></div>}
+          {!focused && <div className="semantic-scale"><span>0</span><span>250</span><span>500</span><span>750</span><i /><small>µ-semantic units</small></div>}
         </div>
 
         {selected && data && (
@@ -994,6 +1119,17 @@ export function PaperAtlas() {
               <p className="paper-session">{selected.se} · {new Date(selected.sc).toLocaleDateString("en", { month: "short", day: "numeric" })}</p>
 
               <div className="inspector-section contribution-section"><span>KEY CONTRIBUTION</span><p>{contribution}</p><small>{spotlight ? "CURATED SUMMARY" : selectedDetail ? "EXTRACTED FROM FULL ABSTRACT" : "EXTRACTED FROM PREVIEW ABSTRACT"}</small></div>
+              <div className="inspector-section connection-cards reader-connections">
+                <div className="connections-heading"><span>RELATED PAPERS ({relationships.length})</span><small>COMBINED SIGNAL</small></div>{relationships.map(relationship => {
+                const item = data.points[relationship.index];
+                const sharedTags = [...relationship.sharedMethods, ...relationship.sharedTasks].slice(0, 4);
+                return <button className={`relation-card relation-${relationship.strength}`} key={item.uid ?? item.url ?? `${item.t}-${relationship.index}`} onMouseEnter={() => setHighlightedNeighbor(relationship.index)} onMouseLeave={() => setHighlightedNeighbor(null)} onClick={() => selectPoint(relationship.index)}>
+                  <span className="relation-card-title"><i style={{ background: CLUSTER_COLORS[item.vc ?? item.c] }} /><strong>{item.t}</strong><b>{Math.round(relationship.score * 100)}</b></span>
+                  <em>{relationship.reason}</em>
+                  <span className="relation-card-meta"><span>{sharedTags.map(tag => <i key={tag}>{tag}</i>)}</span><small>{relationship.strength.toUpperCase()}</small></span>
+                  <span className="relation-card-bar"><i style={{ width: `${clamp(relationship.score * 100, 2, 100)}%` }} /></span>
+                </button>;
+              })}</div>
               <div className="inspector-section"><span>WHY IT MATTERS</span><div className="why-grid">
                 {(selected.taskTags?.length ?? 0) > 0 && <p><span>TASK</span><strong>{selected.taskTags?.slice(0, 3).join(" · ")}</strong></p>}
                 {(selected.methodTags?.length ?? 0) > 0 && <p><span>METHOD</span><strong>{selected.methodTags?.slice(0, 3).join(" · ")}</strong></p>}
@@ -1019,17 +1155,6 @@ export function PaperAtlas() {
               <a className="open-paper-link" href={selected.url} target="_blank" rel="noreferrer">OPEN PAPER PAGE <ArrowSquareOut size={17} /></a>
               {selected.githubUrl && <a className="open-repository" href={selected.githubUrl} target="_blank" rel="noreferrer"><Code size={15} /> OPEN REPOSITORY</a>}
             </section>
-            <section className="neighbor-list connection-cards">
-              <div className="connections-heading"><span>RELATED PAPERS ({relationships.length})</span><small>COMBINED SIGNAL</small></div>{relationships.map(relationship => {
-              const item = data.points[relationship.index];
-              const sharedTags = [...relationship.sharedMethods, ...relationship.sharedTasks].slice(0, 4);
-              return <button className={`relation-card relation-${relationship.strength}`} key={item.uid ?? item.url ?? `${item.t}-${relationship.index}`} onMouseEnter={() => setHighlightedNeighbor(relationship.index)} onMouseLeave={() => setHighlightedNeighbor(null)} onClick={() => selectPoint(relationship.index)}>
-                <span className="relation-card-title"><i style={{ background: CLUSTER_COLORS[item.vc ?? item.c] }} /><strong>{item.t}</strong><b>{Math.round(relationship.score * 100)}</b></span>
-                <em>{relationship.reason}</em>
-                <span className="relation-card-meta"><span>{sharedTags.map(tag => <i key={tag}>{tag}</i>)}</span><small>{relationship.strength.toUpperCase()}</small></span>
-                <span className="relation-card-bar"><i style={{ width: `${clamp(relationship.score * 100, 2, 100)}%` }} /></span>
-              </button>;
-            })}</section>
           </aside>
         )}
       </section>}

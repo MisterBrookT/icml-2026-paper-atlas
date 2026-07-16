@@ -71,8 +71,16 @@ test("keeps evidence, interaction, and source boundaries explicit", async () => 
   assert.match(atlas, /RELATION_LIMIT = 10/);
   assert.match(atlas, /DISCOVERY SIGNAL/);
   assert.match(atlas, /ranking-stack/);
-  assert.match(atlas, /focusScaleRef\.current = Math\.max\(view\.scale, 1\.45\)/);
-  assert.match(atlas, /BACK TO OVERVIEW/);
+  assert.match(atlas, /CONNECTED VIEW/);
+  assert.match(atlas, /CONNECTED_POSITIONS/);
+  assert.match(atlas, /CROSS-TOPIC BRIDGE/);
+  assert.match(atlas, /connectionHistory/);
+  assert.match(atlas, /recordHistory/);
+  assert.match(atlas, /BACK TO ATLAS/);
+  assert.match(atlas, /https:\/\/github\.com\/MisterBrookT\/icml-2026-paper-atlas/);
+  assert.match(atlas, /reader-connections/);
+  assert.doesNotMatch(atlas, /focusScaleRef|focusTarget|focusPositionedWidthRef/);
+  assert.doesNotMatch(atlas, /<section className="neighbor-list connection-cards"/);
   assert.match(atlas, /SHOW FULL ABSTRACT/);
   assert.match(atlas, /useState\(true\)/);
   assert.match(atlas, /\/api\/papers\//);

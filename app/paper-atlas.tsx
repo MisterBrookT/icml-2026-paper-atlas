@@ -3,10 +3,8 @@
 import {
   ArrowLeft,
   ArrowSquareOut,
-  CaretDown,
   CaretLeft,
   CaretRight,
-  CaretUp,
   Code,
   GithubLogo,
   MapTrifold,
@@ -80,6 +78,7 @@ type Relationship = {
 };
 type DiscoverySignal = { visits: number; votes: number; stars: number; score: number; coverage: number };
 type ConnectedNode = Relationship & { x: number; y: number; ring: "closest" | "bridge"; order: number };
+type FocusOrigin = { x: number; y: number };
 
 const CLUSTER_COLORS = [
   "#356df1",
@@ -97,10 +96,7 @@ const RELATION_THRESHOLD = .18;
 const RELATION_LIMIT = 10;
 const RELATION_WEIGHTS = { semantic: .55, method: .25, task: .20 } as const;
 const REPOSITORY_URL = "https://github.com/MisterBrookT/icml-2026-paper-atlas";
-const CONNECTED_POSITIONS = {
-  closest: [{ x: 50, y: 14 }, { x: 79, y: 43 }, { x: 50, y: 79 }, { x: 21, y: 43 }],
-  bridge: [{ x: 14, y: 14 }, { x: 86, y: 14 }, { x: 86, y: 78 }, { x: 14, y: 78 }],
-} as const;
+const CONNECTED_ANGLES = { closest: [-90, -5, 85, 175], bridge: [-140, -50, 40, 130] } as const;
 
 const SPOTLIGHTS: Record<string, {
   label: string;
@@ -268,6 +264,7 @@ function ConnectedView({
   contribution,
   topic,
   subtopic,
+  origin,
   highlighted,
   historyCount,
   onBack,
@@ -282,6 +279,7 @@ function ConnectedView({
   contribution: string;
   topic?: VisualTopic;
   subtopic?: Subtopic;
+  origin: FocusOrigin;
   highlighted: number | null;
   historyCount: number;
   onBack: () => void;
@@ -298,13 +296,20 @@ function ConnectedView({
     return (point.macroTopicId ?? point.vc ?? point.c) !== selectedTopicIndex;
   });
   const bridge = [...crossTopic, ...bridgePool.filter(item => !crossTopic.includes(item))].slice(0, 4);
+  const positionNode = (item: Relationship, ring: "closest" | "bridge", order: number): ConnectedNode => {
+    const angle = CONNECTED_ANGLES[ring][order] * Math.PI / 180;
+    const radiusX = ring === "closest" ? 32 + (1 - item.score) * 8 : 42 + (1 - item.score) * 6;
+    const radiusY = ring === "closest" ? 31 + (1 - item.score) * 7 : 40 + (1 - item.score) * 5;
+    return { ...item, x: 50 + Math.cos(angle) * radiusX, y: 50 + Math.sin(angle) * radiusY, ring, order };
+  };
   const nodes: ConnectedNode[] = [
-    ...closest.map((item, order) => ({ ...item, ...CONNECTED_POSITIONS.closest[order], ring: "closest" as const, order })),
-    ...bridge.map((item, order) => ({ ...item, ...CONNECTED_POSITIONS.bridge[order], ring: "bridge" as const, order })),
+    ...closest.map((item, order) => positionNode(item, "closest", order)),
+    ...bridge.map((item, order) => positionNode(item, "bridge", order)),
   ];
 
   return <div
     className="connected-view"
+    style={{ "--origin-x": `${origin.x}%`, "--origin-y": `${origin.y}%` } as React.CSSProperties}
     onPointerDown={event => event.stopPropagation()}
     onPointerUp={event => event.stopPropagation()}
     onClick={event => { if (event.target === event.currentTarget) onExit(); }}
@@ -325,6 +330,7 @@ function ConnectedView({
         const controlY = 350 + (endY - 350) * .22 + (node.order - 1.5) * 8;
         return <path
           key={point.uid ?? `${point.t}-${node.index}`}
+          pathLength="1"
           d={`M 500 350 Q ${controlX} ${controlY} ${endX} ${endY}`}
           stroke={color}
           strokeWidth={highlighted === node.index ? 5 : 1.2 + node.score * 4.2}
@@ -336,7 +342,18 @@ function ConnectedView({
     <article className="connected-hero" style={{ "--topic-color": CLUSTER_COLORS[selectedTopicIndex] } as React.CSSProperties}>
       <div><span>CENTER PAPER</span><b>{Math.round((selected.attentionPercentile ?? 0) * 100)}<small>ATTN PCTL</small></b></div>
       <h2>{selected.t}</h2>
-      <p>{contribution}</p>
+      <p className="connected-authors">{selected.au.slice(0, 4).join(", ")}{selected.au.length > 4 ? ", et al." : ""}</p>
+      <section className="connected-contribution"><span>KEY CONTRIBUTION</span><p>{contribution}</p></section>
+      <div className="connected-facts">
+        <p><span>CORE METHOD</span><strong>{selected.methodTags?.slice(0, 2).join(" · ") || "Not tagged"}</strong></p>
+        <p><span>TASK</span><strong>{selected.taskTags?.slice(0, 2).join(" · ") || "General research"}</strong></p>
+        <p><span>DOMAIN</span><strong>{selected.domainTags?.slice(0, 2).join(" · ") || topic?.label || "Machine learning"}</strong></p>
+      </div>
+      <div className="connected-signals" aria-label="Attention signals, not paper quality">
+        <p><strong>{selected.visits7d == null ? "N/A" : selected.visits7d.toLocaleString()}</strong><span>VISITS · 7D</span></p>
+        <p><strong>{selected.publicVotes == null ? "N/A" : selected.publicVotes.toLocaleString()}</strong><span>AX VOTES</span></p>
+        <p><strong>{selected.githubStars == null ? "N/A" : selected.githubStars.toLocaleString()}</strong><span>GH STARS</span></p>
+      </div>
       <footer>
         <span>{topic?.label ?? "ICML 2026"}</span>
         {selected.methodTags?.[0] && <span>{selected.methodTags[0]}</span>}
@@ -350,7 +367,7 @@ function ConnectedView({
       return <button
         className={`connected-node connected-node-${node.ring} ${highlighted === node.index ? "is-highlighted" : ""}`}
         key={point.uid ?? `${point.t}-${node.index}`}
-        style={{ left: `${node.x}%`, top: `${node.y}%`, "--node-color": CLUSTER_COLORS[topicIndex] } as React.CSSProperties}
+        style={{ left: `${node.x}%`, top: `${node.y}%`, "--node-color": CLUSTER_COLORS[topicIndex], "--node-delay": `${150 + node.order * 55 + (node.ring === "bridge" ? 170 : 0)}ms` } as React.CSSProperties}
         onMouseEnter={() => onHighlight(node.index)}
         onMouseLeave={() => onHighlight(null)}
         onFocus={() => onHighlight(node.index)}
@@ -360,6 +377,7 @@ function ConnectedView({
         <span><i />{node.ring === "closest" ? `CLOSEST ${node.order + 1}` : `BRIDGE ${node.order + 1}`}<b>{Math.round(node.score * 100)}</b></span>
         <strong>{point.t}</strong>
         <em>{node.reason}</em>
+        <div className="connected-node-signals"><small>SIM {Math.round(node.semantic * 100)}</small><small>DIST {(1 - node.semantic).toFixed(2)}</small></div>
         <small>{data.visualTopics[topicIndex]?.label ?? "ICML 2026"}</small>
       </button>;
     })}
@@ -458,6 +476,7 @@ export function PaperAtlas() {
   const [mapMode, setMapMode] = useState<MapMode>("pulse");
   const [guideVisible, setGuideVisible] = useState(true);
   const [focused, setFocused] = useState(false);
+  const [focusOrigin, setFocusOrigin] = useState<FocusOrigin>({ x: 50, y: 50 });
   const [connectionHistory, setConnectionHistory] = useState<number[]>([]);
   const [highlightedNeighbor, setHighlightedNeighbor] = useState<number | null>(null);
   const [query, setQuery] = useState("");
@@ -468,7 +487,6 @@ export function PaperAtlas() {
   const [paperDetailCache, setPaperDetailCache] = useState<Record<string, PaperDetail>>({});
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(false);
-  const [abstractExpanded, setAbstractExpanded] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const detailRequestRef = useRef<string | null>(null);
@@ -887,7 +905,6 @@ export function PaperAtlas() {
     setFocused(false);
     setSelectedIndex(null);
     setHighlightedNeighbor(null);
-    setAbstractExpanded(true);
     setConnectionHistory([]);
     animateView(preFocusView ?? { scale: 1, x: 0, y: 0 });
     setPreFocusView(null);
@@ -943,18 +960,20 @@ export function PaperAtlas() {
     if (!focused) {
       setPreFocusView(view);
       setConnectionHistory([]);
+      const origin = surface === "atlas" ? toScreen(data.points[index]) : { x: size.width / 2, y: size.height / 2 };
+      setFocusOrigin({ x: clamp(origin.x / Math.max(size.width, 1) * 100, 0, 100), y: clamp(origin.y / Math.max(size.height, 1) * 100, 0, 100) });
     } else if (selectedIndex !== null && options?.recordHistory !== false) {
       setConnectionHistory(current => [...current, selectedIndex].slice(-12));
+      setFocusOrigin({ x: 50, y: 50 });
     }
     const uid = data.points[index].uid;
     setSurface("atlas");
     setSelectedIndex(index);
     setQuery("");
     setFocused(true);
-    setAbstractExpanded(true);
     setDetailLoading(Boolean(uid && !paperDetailCache[uid]));
     setDetailError(false);
-  }, [data, focused, paperDetailCache, selectedIndex, view]);
+  }, [data, focused, paperDetailCache, selectedIndex, size, surface, toScreen, view]);
 
   const goBackConnection = useCallback(() => {
     const previous = connectionHistory.at(-1);
@@ -1056,6 +1075,7 @@ export function PaperAtlas() {
         >
           <canvas ref={canvasRef} aria-label="ICML 2026 论文语义地图" />
           {focused && selected && data && selectedIndex !== null && <ConnectedView
+            key={selected.uid ?? selectedIndex}
             data={data}
             selected={selected}
             selectedIndex={selectedIndex}
@@ -1063,6 +1083,7 @@ export function PaperAtlas() {
             contribution={contribution}
             topic={selectedTopic ?? undefined}
             subtopic={selectedSubtopic ?? undefined}
+            origin={focusOrigin}
             highlighted={highlightedNeighbor}
             historyCount={connectionHistory.length}
             onBack={goBackConnection}
@@ -1146,9 +1167,8 @@ export function PaperAtlas() {
               </div><p className="signal-note">7D = current attention · ALL = cumulative reach · GitHub = open-source adoption · citation impact unavailable</p></div>
 
               <div className="inspector-section abstract-section">
-                <div className="section-heading"><span>ABSTRACT</span><small>{detailLoading ? "LOADING FULL TEXT…" : selectedDetail ? "FULL ABSTRACT" : detailError ? "PREVIEW ABSTRACT" : "PREVIEW ABSTRACT"}</small></div>
-                <p className={abstractExpanded ? "is-expanded" : ""}>{readableAbstract}</p>
-                <button className="abstract-toggle" onClick={() => setAbstractExpanded(value => !value)}>{abstractExpanded ? <CaretUp size={14} /> : <CaretDown size={14} />}{abstractExpanded ? "COLLAPSE ABSTRACT" : "SHOW FULL ABSTRACT"}</button>
+                <div className="section-heading"><span>FULL ABSTRACT</span><small>{detailLoading ? "LOADING FULL TEXT…" : selectedDetail ? "ALPHAXIV DETAIL" : "PREVIEW ABSTRACT"}</small></div>
+                <p className="is-expanded">{readableAbstract}</p>
                 {detailError && <small className="detail-error">FULL ABSTRACT UNAVAILABLE · SHOWING MAP PREVIEW</small>}
               </div>
 

@@ -72,7 +72,9 @@ test("keeps evidence, interaction, and source boundaries explicit", async () => 
   assert.match(atlas, /DISCOVERY SIGNAL/);
   assert.match(atlas, /ranking-stack/);
   assert.match(atlas, /CONNECTED VIEW/);
-  assert.match(atlas, /CONNECTED_POSITIONS/);
+  assert.match(atlas, /CONNECTED_ANGLES/);
+  assert.match(atlas, /radiusX = ring === "closest"/);
+  assert.match(atlas, /DIST \{\(1 - node\.semantic\)\.toFixed\(2\)\}/);
   assert.match(atlas, /CROSS-TOPIC BRIDGE/);
   assert.match(atlas, /connectionHistory/);
   assert.match(atlas, /recordHistory/);
@@ -81,8 +83,8 @@ test("keeps evidence, interaction, and source boundaries explicit", async () => 
   assert.match(atlas, /reader-connections/);
   assert.doesNotMatch(atlas, /focusScaleRef|focusTarget|focusPositionedWidthRef/);
   assert.doesNotMatch(atlas, /<section className="neighbor-list connection-cards"/);
-  assert.match(atlas, /SHOW FULL ABSTRACT/);
-  assert.match(atlas, /useState\(true\)/);
+  assert.match(atlas, /FULL ABSTRACT/);
+  assert.doesNotMatch(atlas, /COLLAPSE ABSTRACT|SHOW FULL ABSTRACT/);
   assert.match(atlas, /\/api\/papers\//);
   assert.match(atlas, /ATTENTION · NOT QUALITY/);
   assert.doesNotMatch(atlas, /api\.alphaxiv\.org/i);

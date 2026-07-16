@@ -148,6 +148,7 @@
 .is-focused .atlas-map canvas { opacity: 0; }
 
 .connected-view {
+  animation: connected-reveal 520ms cubic-bezier(.2,.78,.2,1) both;
   background:
     radial-gradient(circle at 50% 50%, rgba(53,109,241,.085) 0 15%, transparent 15.2%),
     radial-gradient(circle at 50% 50%, transparent 0 31%, rgba(17,23,22,.06) 31.15%, transparent 31.35%),
@@ -176,8 +177,9 @@
 .connected-legend i.bridge { background: transparent; }
 .connected-legend small { color: var(--atlas-muted); font-size: 6px; }
 .connected-lines { height: 100%; inset: 0; overflow: visible; pointer-events: none; position: absolute; width: 100%; z-index: 1; }
-.connected-lines path { fill: none; transition: opacity 160ms ease, stroke-width 160ms ease; vector-effect: non-scaling-stroke; }
+.connected-lines path { animation: connected-line-draw 560ms cubic-bezier(.2,.78,.2,1) 160ms both; fill: none; stroke-dasharray: 1; stroke-dashoffset: 1; transition: opacity 160ms ease, stroke-width 160ms ease; vector-effect: non-scaling-stroke; }
 .connected-hero {
+  animation: connected-hero-in 480ms cubic-bezier(.18,.85,.2,1) 90ms both;
   background: rgba(250,252,249,.98);
   border: 1px solid var(--atlas-ink);
   border-top: 5px solid var(--topic-color);
@@ -196,10 +198,25 @@
 .connected-hero > div > b { color: var(--atlas-blue); font-family: var(--font-display), sans-serif; font-size: 24px; font-weight: 600; line-height: .72; text-align: right; }
 .connected-hero > div > b small { color: var(--atlas-muted); display: block; font-family: var(--font-mono), monospace; font-size: 6px; letter-spacing: .08em; margin-top: 8px; }
 .connected-hero h2 { font-family: var(--font-display), sans-serif; font-size: clamp(23px, 2.3vw, 34px); font-weight: 600; letter-spacing: -.025em; line-height: 1; margin: 12px 0 0; }
-.connected-hero p { color: #33403c; font-size: 12px; line-height: 1.55; margin: 13px 0 0; }
+.connected-authors { color: var(--atlas-muted); font-family: var(--font-mono), monospace; font-size: 7px; line-height: 1.45; margin: 7px 0 0; }
+.connected-contribution { border-top: 1px solid var(--atlas-line); margin-top: 13px; padding-top: 10px; }
+.connected-contribution > span, .connected-facts span { color: var(--atlas-muted); font-family: var(--font-mono), monospace; font-size: 6px; letter-spacing: .09em; }
+.connected-contribution p { color: #33403c; font-size: 12px; line-height: 1.5; margin: 6px 0 0; }
+.connected-facts { border-bottom: 1px solid var(--atlas-line); border-top: 1px solid var(--atlas-line); display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 12px; }
+.connected-facts p { border-right: 1px solid var(--atlas-line); margin: 0; min-width: 0; padding: 8px 7px 9px; }
+.connected-facts p:first-child { padding-left: 0; }
+.connected-facts p:last-child { border-right: 0; padding-right: 0; }
+.connected-facts strong { display: block; font-size: 8px; line-height: 1.35; margin-top: 4px; overflow-wrap: anywhere; }
+.connected-signals { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 10px; }
+.connected-signals p { border-right: 1px solid var(--atlas-line); display: flex; flex-direction: column; margin: 0; padding: 0 8px; }
+.connected-signals p:first-child { padding-left: 0; }
+.connected-signals p:last-child { border-right: 0; padding-right: 0; }
+.connected-signals strong { font-family: var(--font-display), sans-serif; font-size: 17px; font-weight: 600; line-height: 1; }
+.connected-signals span { color: var(--atlas-muted); font-family: var(--font-mono), monospace; font-size: 5px; letter-spacing: .06em; margin-top: 4px; }
 .connected-hero footer { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 13px; }
 .connected-hero footer span { border: 1px solid var(--atlas-line); color: var(--atlas-muted); font-family: var(--font-mono), monospace; font-size: 6px; padding: 4px 5px; }
 .connected-node {
+  animation: connected-node-in 460ms cubic-bezier(.18,.85,.2,1) var(--node-delay) both;
   background: rgba(250,252,249,.96);
   border: 1px solid rgba(17,23,22,.5);
   border-top: 4px solid var(--node-color);
@@ -221,6 +238,8 @@
 .connected-node > span b { color: var(--node-color); font-family: var(--font-display), sans-serif; font-size: 17px; }
 .connected-node strong { display: -webkit-box; font-size: 10px; line-height: 1.25; margin-top: 6px; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .connected-node em { color: var(--atlas-muted); display: block; font-family: var(--font-mono), monospace; font-size: 6px; font-style: normal; line-height: 1.4; margin-top: 5px; }
+.connected-node-signals { display: flex; gap: 5px; margin-top: 6px; }
+.connected-node-signals small { background: color-mix(in srgb, var(--node-color) 8%, white); border: 1px solid color-mix(in srgb, var(--node-color) 28%, white); color: var(--node-color); font-family: var(--font-mono), monospace; font-size: 6px; padding: 2px 4px; }
 .connected-node > small { color: var(--node-color); display: block; font-family: var(--font-mono), monospace; font-size: 6px; letter-spacing: .06em; margin-top: 6px; text-transform: uppercase; }
 .connected-node-bridge { background: rgba(246,248,247,.88); border-color: rgba(17,23,22,.24); opacity: .82; }
 .connected-node:hover, .connected-node.is-highlighted, .connected-node:focus-visible { box-shadow: 7px 7px 0 color-mix(in srgb, var(--node-color) 22%, transparent); opacity: 1; outline: 2px solid var(--node-color); outline-offset: 2px; transform: translate(-50%, -50%) scale(1.035); z-index: 4; }
@@ -482,6 +501,7 @@
   z-index: 10;
 }
 .paper-inspector.focus-reader { flex-basis: clamp(480px, 40vw, 600px); }
+.paper-inspector.focus-reader { animation: reader-enter 440ms cubic-bezier(.2,.78,.2,1) both; }
 .inspector-top { align-items: center; border-bottom: 1px solid var(--atlas-ink); display: flex; font-family: var(--font-mono), monospace; font-size: 9px; justify-content: space-between; letter-spacing: .05em; padding-left: 24px; }
 .inspector-top > div { align-self: stretch; display: flex; }
 .inspector-top button { align-items: center; background: transparent; border: 0; border-left: 1px solid var(--atlas-line); cursor: pointer; display: flex; justify-content: center; width: 38px; }
@@ -567,6 +587,11 @@
 
 
 @keyframes atlas-pulse { 0%,100% { opacity: .3; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes connected-reveal { from { clip-path: circle(0 at var(--origin-x) var(--origin-y)); } to { clip-path: circle(150vmax at var(--origin-x) var(--origin-y)); } }
+@keyframes connected-line-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes connected-hero-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.82); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes connected-node-in { from { opacity: 0; scale: .78; translate: 0 14px; } to { opacity: 1; scale: 1; translate: 0 0; } }
+@keyframes reader-enter { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: translateX(0); } }
 
 @media (max-width: 1180px) {
   .atlas-header { grid-template-columns: 280px 1fr 470px; }
@@ -631,6 +656,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .map-loading svg { animation: none; }
+  .connected-view, .connected-lines path, .connected-hero, .connected-node, .paper-inspector.focus-reader { animation: none; }
 }
 
 @media (max-height: 800px) {

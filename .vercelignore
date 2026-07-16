@@ -1,0 +1,10 @@
+.git
+.next
+.vinext
+.wrangler
+.superpowers
+dist
+node_modules
+outputs
+work
+.env*
